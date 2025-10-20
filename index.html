@@ -1,0 +1,434 @@
+<script>
+        // --- AUTHENTICATION LOGIC (Requirement 1) ---
+        const USERS = {
+            'student': { password: 'project', name: 'Aditya Project Leader' },
+            'guest': { password: 'user', name: 'Guest User' }
+        };
+        let currentUserName = '';
+        
+        // Storing plan results globally for access across tabs and PDF generation
+        let currentPlan = {
+            plan: [],
+            tier: 0,
+            target: null,
+            macros: null,
+            goal: null,
+            activity: null,
+            filter: null,
+            error: null
+        };
+
+        function handleLogin() {
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value.trim();
+            const errorElement = document.getElementById('login-error');
+
+            if (USERS[username] && USERS[username].password === password) {
+                currentUserName = USERS[username].name;
+                localStorage.setItem('isAuthenticated', 'true');
+                localStorage.setItem('userName', currentUserName);
+                showDashboard();
+            } else {
+                errorElement.classList.remove('hidden');
+            }
+        }
+
+        function showDashboard() {
+            if (localStorage.getItem('isAuthenticated') === 'true') {
+                currentUserName = localStorage.getItem('userName');
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('dashboard-screen').classList.remove('hidden');
+                // Requirement 2: Display user's name on the dashboard
+                document.getElementById('user-display-name').textContent = currentUserName.toUpperCase();
+                showTab('diet');
+            }
+        }
+
+        function showLogoutWarning() {
+            document.getElementById('warning-modal').classList.remove('hidden');
+        }
+
+        function hideLogoutWarning() {
+            document.getElementById('warning-modal').classList.add('hidden');
+        }
+
+        function handleLogout() {
+            localStorage.clear(); // Clears authentication state
+            currentUserName = '';
+            hideLogoutWarning();
+            document.getElementById('dashboard-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-error').classList.add('hidden');
+            document.getElementById('login-username').value = '';
+            document.getElementById('login-password').value = '';
+        }
+
+        window.onload = showDashboard;
+
+        // --- TAB NAVIGATION ---
+        function showTab(tabName) {
+            // Logic to switch between tabs and highlight the active tab
+            document.getElementById('diet-tab').classList.add('hidden');
+            document.getElementById('workout-tab').classList.add('hidden');
+            
+            document.getElementById('tab-diet-btn').classList.remove('border-[var(--primary-color)]', 'text-[var(--primary-color)]');
+            document.getElementById('tab-workout-btn').classList.remove('border-[var(--primary-color)]', 'text-[var(--primary-color)]');
+            document.getElementById('tab-diet-btn').classList.add('border-transparent', 'text-gray-400', 'hover:text-white', 'hover:border-gray-500');
+            document.getElementById('tab-workout-btn').classList.add('border-transparent', 'text-gray-400', 'hover:text-white', 'hover:border-gray-500');
+
+
+            if (tabName === 'diet') {
+                document.getElementById('diet-tab').classList.remove('hidden');
+                document.getElementById('tab-diet-btn').classList.add('border-[var(--primary-color)]', 'text-[var(--primary-color)]');
+                document.getElementById('tab-diet-btn').classList.remove('border-transparent', 'text-gray-400', 'hover:text-white', 'hover:border-gray-500');
+            } else if (tabName === 'workout') {
+                document.getElementById('workout-tab').classList.remove('hidden');
+                document.getElementById('tab-workout-btn').classList.add('border-[var(--primary-color)]', 'text-[var(--primary-color)]');
+                document.getElementById('tab-workout-btn').classList.remove('border-transparent', 'text-gray-400', 'hover:text-white', 'hover:border-gray-500');
+                // Requirement 3: Generate workout plan when tab is clicked
+                generateWorkoutPlan();
+            }
+        }
+        
+        // --- CORE DATA AND ML SIMULATION ---
+
+        const RECIPES = [
+            // Indian/Veg
+            { id: 10, name: 'Aloo Paratha (2 pcs)', Cal: 280, Prot: 8, Fat: 15, Carb: 30, Time: 30, Type: 'Veg' },
+            { id: 11, name: 'Masala Dosa (1 pc)', Cal: 387, Prot: 7, Fat: 10, Carb: 77, Time: 45, Type: 'Veg' },
+            { id: 12, name: 'Chapati & Bhaji (2/1 cup)', Cal: 320, Prot: 10, Fat: 12, Carb: 40, Time: 35, Type: 'Veg' },
+            { id: 13, name: 'Lentil Soup (Dal)', Cal: 350, Prot: 20, Fat: 8, Carb: 55, Time: 50, Type: 'Veg' },
+            { id: 14, name: 'Paneer Bhurji (1 cup)', Cal: 350, Prot: 25, Fat: 25, Carb: 10, Time: 20, Type: 'Veg' },
+            { id: 15, name: 'Rajma Chawal (1 plate)', Cal: 480, Prot: 20, Fat: 15, Carb: 65, Time: 60, Type: 'Veg' },
+            // Western/Egg
+            { id: 20, name: 'Scrambled Eggs on Toast', Cal: 450, Prot: 25, Fat: 30, Carb: 25, Time: 15, Type: 'Egg' },
+            { id: 21, name: 'Veggie Omelet', Cal: 420, Prot: 30, Fat: 25, Carb: 20, Time: 15, Type: 'Egg' },
+            { id: 22, name: 'Greek Yogurt Parfait', Cal: 250, Prot: 25, Fat: 5, Carb: 25, Time: 5, Type: 'Veg' },
+            { id: 23, name: 'Bread & Butter Toast (2 pcs)', Cal: 250, Prot: 6, Fat: 15, Carb: 25, Time: 10, Type: 'Veg' },
+            // Non-Veg
+            { id: 30, name: 'Grilled Salmon & Asparagus', Cal: 450, Prot: 40, Fat: 25, Carb: 15, Time: 30, Type: 'Non-Veg' },
+            { id: 31, name: 'Chicken Biryani (1 cup)', Cal: 500, Prot: 30, Fat: 25, Carb: 50, Time: 60, Type: 'Non-Veg' },
+            { id: 32, name: 'Beef Burger w/ Fries', Cal: 850, Prot: 50, Fat: 55, Carb: 40, Time: 20, Type: 'Non-Veg' },
+            { id: 33, name: 'Chicken Stir-Fry', Cal: 550, Prot: 45, Fat: 30, Carb: 30, Time: 25, Type: 'Non-Veg' }
+        ];
+
+        function calculateTDEE(age, weight_kg, height_cm, activity, goal) {
+            // Simplified TDEE Calculation
+            const BMR = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5;
+            const multipliers = { 'sedentary': 1.2, 'moderate': 1.55, 'active': 1.9 };
+            const TDEE = BMR * multipliers[activity];
+            
+            let adjustment = 0;
+            if (goal === 'loss') adjustment = -500;
+            if (goal === 'gain') adjustment = 500;
+
+            const targetCalories = TDEE + adjustment;
+            
+            // Macro Distribution (25% P, 30% F, 45% C)
+            return {
+                Calories: targetCalories,
+                Protein: (targetCalories * 0.25) / 4,
+                Fat: (targetCalories * 0.30) / 9,
+                Carbs: (targetCalories * 0.45) / 4,
+            };
+        }
+        
+        function filterAndOptimize(targetMacros, selectedFilter) {
+            let candidates = RECIPES;
+            
+            // Apply filtering (Requirement 2)
+            if (selectedFilter === 'Veg') {
+                candidates = RECIPES.filter(r => r.Type === 'Veg');
+            } else if (selectedFilter === 'Eggetarian') {
+                candidates = RECIPES.filter(r => r.Type === 'Veg' || r.Type === 'Egg');
+            } else if (selectedFilter === 'Non-Veg') {
+                candidates = RECIPES.filter(r => r.Type === 'Non-Veg' || r.Type === 'Egg');
+            }
+            
+            if (candidates.length < 3) {
+                return { plan: [], tier: 0, error: "Not enough filtered recipes to create a 3-meal plan." };
+            }
+
+            // --- ML Optimization Simulation (Tiered Fallback) ---
+            const TIERS = [
+                { id: 1, cal_min: 0.90, prot_min: 0.70 },
+                { id: 2, cal_min: 0.85, prot_min: 0.50 },
+                { id: 3, cal_min: 0.75, prot_min: 0.35 }
+            ];
+
+            // Simple greedy optimization: checks feasibility, then chooses the lowest Cook Time set.
+            for (const tier of TIERS) {
+                let feasiblePlans = [];
+
+                // Brute-force check for combinations of 3 meals
+                for (let i = 0; i < candidates.length; i++) {
+                    for (let j = i + 1; j < candidates.length; j++) {
+                        for (let k = j + 1; k < candidates.length; k++) {
+                            const set = [candidates[i], candidates[j], candidates[k]];
+                            const totalCal = set.reduce((sum, r) => sum + r.Cal, 0);
+                            const totalProt = set.reduce((sum, r) => sum + r.Prot, 0);
+                            const totalTime = set.reduce((sum, r) => sum + r.Time, 0);
+
+                            // Check Feasibility against current Tier constraints (Fix for 'Infeasible Plan')
+                            if (
+                                totalCal >= targetMacros.Calories * tier.cal_min &&
+                                totalCal <= targetMacros.Calories * 1.25 && 
+                                totalProt >= targetMacros.Protein * tier.prot_min
+                            ) {
+                                feasiblePlans.push({ plan: set, time: totalTime, tier: tier.id });
+                            }
+                        }
+                    }
+                }
+
+                if (feasiblePlans.length > 0) {
+                    // Success: Find the plan with the minimum cook time (Optimization Objective)
+                    feasiblePlans.sort((a, b) => a.time - b.time);
+                    const bestPlan = feasiblePlans[0];
+                    return { plan: bestPlan.plan, tier: bestPlan.tier, error: null };
+                }
+            }
+
+            // Failure after all Tiers
+            return { plan: [], tier: 0, error: "Optimizer failed even with maximum constraint relaxation. Goal too extreme." };
+        }
+
+        function generatePlan() {
+            // Get user inputs from the form
+            const age = parseFloat(document.getElementById('input-age').value);
+            const weight_kg = parseFloat(document.getElementById('input-weight').value);
+            const goal = document.getElementById('input-goal').value;
+            const activity = document.getElementById('input-activity').value;
+            const height_cm = 175; // Using a static height for simplicity in this demo
+
+            const selectedFilter = document.querySelector('input[name="diet-type"]:checked').value;
+            
+            // Calculate target macros
+            const targetMacros = calculateTDEE(age, weight_kg, height_cm, activity, goal);
+
+            // Run ML Optimization Simulation
+            const result = filterAndOptimize(targetMacros, selectedFilter);
+            
+            const outputArea = document.getElementById('output-area');
+            outputArea.innerHTML = '';
+            
+            if (result.error) {
+                outputArea.innerHTML = `<p class="text-red-400 text-center py-8">⚠️ ${result.error}</p>`;
+                currentPlan = { plan: [], tier: 0, target: targetMacros, goal: goal, activity: activity, filter: selectedFilter, error: result.error };
+                return;
+            }
+
+            const plan = result.plan;
+            const totalMacros = {
+                Calories: plan.reduce((sum, r) => sum + r.Cal, 0),
+                Protein: plan.reduce((sum, r) => sum + r.Prot, 0),
+                Fat: plan.reduce((sum, r) => sum + r.Fat, 0),
+                Carbs: plan.reduce((sum, r) => sum + r.Carb, 0),
+            };
+
+            // Store results globally
+            currentPlan = { 
+                plan: plan, 
+                tier: result.tier, 
+                target: targetMacros, 
+                macros: totalMacros, 
+                goal: goal, 
+                activity: activity, 
+                filter: selectedFilter,
+                error: null
+            };
+
+            // --- Display KPIs ---
+            const kpiOutput = document.getElementById('kpi-output');
+            kpiOutput.innerHTML = `
+                <div class="card p-3 rounded-lg">Target Cal: ${targetMacros.Calories.toFixed(0)} kcal</div>
+                <div class="card p-3 rounded-lg">Target Prot: ${targetMacros.Protein.toFixed(0)} g</div>
+                <div class="card p-3 rounded-lg">Achieved Cal: ${totalMacros.Calories.toFixed(0)} kcal</div>
+                <div class="card p-3 rounded-lg">Achieved Prot: ${totalMacros.Protein.toFixed(0)} g</div>
+            `;
+            
+            // --- Display Tier Warning ---
+            if (result.tier > 1) {
+                outputArea.innerHTML += `
+                    <p class="text-yellow-500 font-semibold mb-4">
+                        ⚠️ **Note:** Plan generated using Optimization Tier ${result.tier}. Constraints were temporarily relaxed to find a feasible solution.
+                    </p>`;
+            }
+
+            // --- Display Table ---
+            let tableHTML = `
+                <table class="min-w-full divide-y divide-gray-700 rounded-lg overflow-hidden">
+                    <thead class="bg-gray-800">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Meal Name</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Cal</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Prot (g)</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Time (min)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-gray-900 divide-y divide-gray-700">
+            `;
+            
+            plan.forEach(meal => {
+                tableHTML += `
+                    <tr>
+                        <td class="px-4 py-2 whitespace-nowrap">${meal.name}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${meal.Type}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${meal.Cal}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${meal.Prot}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${meal.Time}</td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `</tbody></table>`;
+            outputArea.innerHTML += tableHTML;
+        }
+
+        // --- WORKOUT PLAN GENERATION (Requirement 3) ---
+
+        function generateWorkoutPlan() {
+            const workoutOutput = document.getElementById('workout-output');
+            
+            // Check if plan data exists
+            if (!currentPlan.goal) {
+                workoutOutput.innerHTML = `
+                    <p class="text-red-400 text-center py-8">
+                        ⚠️ Please run the Diet Plan generation first to set your goal and activity level.
+                    </p>`;
+                return;
+            }
+            
+            const goal = currentPlan.goal;
+            const activity = currentPlan.activity;
+            let duration, intensity, focus, routine;
+
+            // Base intensity based on activity level
+            if (activity === 'active') {
+                duration = "60-75 minutes";
+                intensity = "High";
+            } else if (activity === 'sedentary') {
+                duration = "30-45 minutes";
+                intensity = "Low-Moderate";
+            } else { // moderate
+                duration = "45-60 minutes";
+                intensity = "Moderate";
+            }
+
+            // Routine based on Goal
+            if (goal === 'loss') {
+                focus = "High-Intensity Cardio & Full Body Circuits (to maximize calorie deficit while building lean muscle).";
+                routine = [
+                    ["Day 1: Full Body Circuit", "Squats, Push-ups, Bent-over Rows (3 sets of 15 reps). 30s rest."],
+                    ["Day 2: Cardio & Core", "45 min steady-state run/walk + 15 min plank variations."],
+                    ["Day 3: Active Rest", "Yoga or long walk (30 min)."],
+                    ["Day 4: HIIT & Lower Focus", "20 min Tabata (sprints/jumping jacks) + Lunges (3 sets of 12 reps per leg)."],
+                    ["Day 5: Full Body Strength", "Deadlifts (light), Overhead Press, Pull-ups (3 sets of 8 reps)."]
+                ];
+            } else if (goal === 'gain') {
+                focus = "Strength Training & Progressive Overload (to maximize muscle protein synthesis and strength).";
+                routine = [
+                    ["Day 1: Upper Body Strength (Push)", "Bench Press, Overhead Press, Triceps Extensions (4 sets of 6-10 reps)."],
+                    ["Day 2: Lower Body Strength", "Heavy Squats, Leg Press, Calf Raises (4 sets of 6-8 reps)."],
+                    ["Day 3: Rest", "Focus on recovery and hitting your high protein goal."],
+                    ["Day 4: Upper Body Strength (Pull)", "Deadlifts, Barbell Rows, Bicep Curls (4 sets of 8-10 reps)."],
+                    ["Day 5: Full Body Compound", "Clean & Press, Lunges, Core work (3 sets of 10 reps)."]
+                ];
+            } else { // maintain
+                focus = "Balanced Fitness (Strength for muscle health and cardio for cardiovascular endurance).";
+                routine = [
+                    ["Day 1: Strength Circuit", "Squats, Push-ups, Rows, Planks (3 sets of 12 reps)."],
+                    ["Day 2: Cardio Endurance", "45 min steady-state run/walk."],
+                    ["Day 3: Active Rest", "Cycling or light mobility work."],
+                    ["Day 4: Core & Mobility", "Crunches, Leg Raises, Bird-Dogs (3 sets of 15 reps) + Yoga."],
+                    ["Day 5: Full Body Lift", "Deadlifts (moderate), Bench Press (moderate) (3 sets of 10 reps)."]
+                ];
+            }
+            
+            let routineHTML = '';
+            routine.forEach(([day, desc]) => {
+                routineHTML += `
+                    <div class="flex border-b border-gray-700 py-3 workout-routine-item pl-2">
+                        <div class="w-1/3 font-semibold text-[var(--accent-color)]">${day}</div>
+                        <div class="w-2/3 text-gray-300">${desc}</div>
+                    </div>
+                `;
+            });
+
+
+            // --- Display Workout ---
+            workoutOutput.innerHTML = `
+                <div class="workout-box bg-gray-900 p-6 rounded-lg mb-8">
+                    <h3 class="text-xl font-bold mb-2 text-[var(--primary-color)]">Goal Focus: ${goal.toUpperCase()}</h3>
+                    <p><strong>Primary Strategy:</strong> ${focus}</p>
+                    <p><strong>Recommended Duration:</strong> ${duration}</p>
+                    <p><strong>Intensity:</strong> ${intensity}</p>
+                </div>
+
+                <h4 class="text-xl font-bold mb-4 text-[var(--accent-color)]">📅 Weekly Routine (${routine.length} Days)</h4>
+                <div>
+                    ${routineHTML}
+                </div>
+            `;
+        }
+
+
+        // --- PDF GENERATION / DOWNLOAD (Requirement 2) ---
+
+        function downloadPDF() {
+            if (!currentPlan.plan.length) {
+                alert("Please generate a plan before attempting to download.");
+                return;
+            }
+
+            // Create a temporary printable document content
+            const win = window.open('', '', 'height=700,width=700');
+            win.document.write('<html><head><title>Personalized Plan</title>');
+            win.document.write('<style>');
+            win.document.write(`
+                body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+                h1 { color: #FF5733; border-bottom: 2px solid #FFC300; padding-bottom: 5px; }
+                .section-header { margin-top: 15px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; font-size: 14px; color: #333; }
+                .kpi-box { display: inline-block; padding: 10px; margin-right: 15px; border: 1px solid #ccc; border-radius: 5px; }
+            `);
+            win.document.write('</style></head><body>');
+
+            // Header (Requirement 2: Name in PDF)
+            win.document.write(`<h1>Personalized Diet Plan for ${currentUserName}</h1>`);
+            
+            // Goals and Tier
+            win.document.write('<div class="section-header">Target Summary</div>');
+            win.document.write(`<p>Goal: <strong>${currentPlan.goal.toUpperCase()}</strong> | Filter: <strong>${currentPlan.filter}</strong></p>`);
+            if (currentPlan.tier > 1) {
+                win.document.write(`<p style="color: red;"><strong>Optimization Tier: ${currentPlan.tier}</strong> (Constraints Relaxed)</p>`);
+            }
+
+            // Macros KPI
+            win.document.write('<div class="section-header">Macro Totals</div>');
+            win.document.write('<div style="margin-bottom: 20px;">');
+            win.document.write(`<span class="kpi-box">Total Calories: <strong>${currentPlan.macros.Calories.toFixed(0)} kcal</strong></span>`);
+            win.document.write(`<span class="kpi-box">Total Protein: <strong>${currentPlan.macros.Protein.toFixed(0)} g</strong></span>`);
+            win.document.write('</div>');
+
+            // Meal Table
+            win.document.write('<div class="section-header">Meal Plan Details (3 Meals)</div>');
+            win.document.write(document.getElementById('plan-output').innerHTML);
+
+            // Workout Plan Placeholder
+            win.document.write('<div class="section-header" style="margin-top: 40px;">Integrated Workout Plan Summary</div>');
+            win.document.write(`<p>This plan should be followed alongside a workout routine designed for <strong>${currentPlan.goal.toUpperCase()}</strong> goals.</p>`);
+            win.document.write('<p>For the full routine, please refer to the "Integrated Workout Plan" tab.</p>');
+
+
+            win.document.write('</body></html>');
+            
+            // Print the content
+            win.document.close();
+            win.print();
+        }
+
+    </script>
